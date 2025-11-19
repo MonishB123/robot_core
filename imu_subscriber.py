@@ -21,7 +21,7 @@ class ImuSerialNode(Node):
         
         # CHANGE PORT HERE
         # Initializes the serial connection
-        self.serial_port = serial.Serial('/dev/ttyACM0', 115200, timeout=1)
+        self.serial_port = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
         self.serial_port.flush()
         
         # Creates a timer to call timer_callback every 0.02 seconds (50 Hz)
