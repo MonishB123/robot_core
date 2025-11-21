@@ -1,88 +1,53 @@
-import rclpy
-from rclpy.node import Node
-from geometry_msgs.msg import Quaternion
 import serial
-import math
-import sys
+import time
 
-def get_quaternion_from_euler(roll, pitch, yaw):
-    # This function converts Euler angles (roll, pitch, yaw) in radians to a Quaternion (x, y, z, w).
-    qx = math.sin(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) - math.cos(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
-    qy = math.cos(roll/2) * math.sin(pitch/2) * math.cos(yaw/2) + math.sin(roll/2) * math.cos(pitch/2) * math.sin(yaw/2)
-    qz = math.cos(roll/2) * math.cos(pitch/2) * math.sin(yaw/2) - math.sin(roll/2) * math.sin(pitch/2) * math.cos(yaw/2)
-    qw = math.cos(roll/2) * math.cos(pitch/2) * math.cos(yaw/2) + math.sin(roll/2) * math.sin(pitch/2) * math.sin(yaw/2)
-    return [qx, qy, qz, qw]
+# Change this if needed:
+# On Jetson/Ubuntu, Arduino is usually /dev/ttyACM0 or /dev/ttyUSB0
+SERIAL_PORT = "/dev/ttyACM0"
+BAUD_RATE = 115200
 
-class ImuSerialNode(Node):
-    def __init__(self):
-        super().__init__('imu_serial_driver')
-        # Publisher to the /imu/data topic using geometry_msgs/Quaternion
-        self.publisher_ = self.create_publisher(Quaternion, '/imu/data', 10)
-        
-        # CHANGE PORT HERE
-        # Initializes the serial connection
-        self.serial_port = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
-        self.serial_port.flush()
-        
-        # Creates a timer to call timer_callback every 0.02 seconds (50 Hz)
-        self.timer = self.create_timer(0.02, self.timer_callback)
-        self.get_logger().info("ROS 2 IMU Driver Started. Connected to Arduino.")
+def main():
+    print(f"Connecting to Arduino on {SERIAL_PORT} at {BAUD_RATE} baud...")
 
-    def timer_callback(self):
-        # Checks if there is data waiting on the serial port
-        if self.serial_port.in_waiting > 0:
-            try:
-                # Read a line, decode it from bytes to string, and remove whitespace
-                line = self.serial_port.readline().decode('utf-8').strip()
-                # Split the string by comma to get individual data points (pitch, roll, yaw)
-                data = line.split(',')
+    ser = serial.Serial(
+        port=SERIAL_PORT,
+        baudrate=BAUD_RATE,
+        timeout=1  # seconds
+    )
 
-                if len(data) == 3:
-                    # Convert string data to float degrees
-                    pitch_deg = float(data[0])
-                    roll_deg = float(data[1])
-                    yaw_deg = float(data[2])
+    # Give Arduino a moment to reset after opening the port
+    time.sleep(2)
 
-                    # Convert degrees to radians
-                    roll = math.radians(roll_deg)
-                    pitch = math.radians(pitch_deg)
-                    yaw = math.radians(yaw_deg)
+    print("Connected. Reading pitch,roll,yaw from serial...\n")
 
-                    # Convert Euler angles to Quaternion
-                    q = get_quaternion_from_euler(roll, pitch, yaw)
-
-                    # Create and populate the ROS 2 message
-                    msg = Quaternion()
-                    msg.x = q[0]
-                    msg.y = q[1]
-                    msg.z = q[2]
-                    msg.w = q[3]
-
-                    # Publish the message
-                    self.publisher_.publish(msg)
-                    
-            except ValueError:
-                # Catches error if data is not a valid float (e.g., incomplete line)
-                pass
-            except Exception as e:
-                # Catches all other exceptions (like serial read errors)
-                # **The corrected line using .format()**
-                self.get_logger().error("Serial Error: {}".format(e))
-
-def main(args=None):
-    rclpy.init(args=args)
-    imu_node = ImuSerialNode()
-    
     try:
-        # Keep the node running until interrupted
-        rclpy.spin(imu_node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # Cleanup: close serial port and shutdown ROS 2
-        imu_node.serial_port.close()
-        imu_node.destroy_node()
-        rclpy.shutdown()
+        while True:
+            line = ser.readline().decode("utf-8", errors="ignore").strip()
+            if not line:
+                continue
 
-if __name__ == '__main__':
+            # Expecting: "pitch,roll,yaw"
+            parts = line.split(",")
+            if len(parts) != 3:
+                print(f"Raw: {line}")  # something unexpected; just show it
+                continue
+
+            try:
+                pitch = float(parts[0])
+                roll  = float(parts[1])
+                yaw   = float(parts[2])
+
+                # Print nicely formatted
+                print(f"Pitch: {pitch:7.2f}  Roll: {roll:7.2f}  Yaw: {yaw:7.2f}")
+            except ValueError:
+                # Couldn’t parse the numbers; print raw line for debugging
+                print(f"Parse error, raw line: {line}")
+
+    except KeyboardInterrupt:
+        print("\nStopping...")
+    finally:
+        ser.close()
+        print("Serial port closed.")
+
+if __name__ == "__main__":
     main()
