@@ -3,7 +3,7 @@ import time
 
 # Change this if needed:
 # On Jetson/Ubuntu, Arduino is usually /dev/ttyACM0 or /dev/ttyUSB0
-SERIAL_PORT = "/dev/ttyACM0"
+SERIAL_PORT = "/dev/ttyUSB0"
 BAUD_RATE = 115200
 
 def main():
